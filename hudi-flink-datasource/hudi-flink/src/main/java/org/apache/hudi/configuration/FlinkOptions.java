@@ -290,6 +290,20 @@ public class FlinkOptions extends HoodieConfig {
           + "1) insert operation;\n"
           + "2) upsert for MOR table, the MOR table deduplicate on reading");
 
+  /**
+   * Flag to indicate whether to partial update the same record key when upsert.
+   * By default false to gain extra performance.
+   */
+  public static final ConfigOption<Boolean> PRE_COMBINE_WITH_SCHEMA = ConfigOptions
+      .key("write.precombine.with.schema")
+      .booleanType()
+      .defaultValue(false)
+      .withDescription("Flag to indicate whether to do partial update with schema upsert.\n"
+          + "By default these cases will accept duplicates, to gain extra performance:\n"
+          + "1) use OverwriteWithLatestAvroPayload for upsert, which overwrite update the some record by comparing precombine field. \n"
+          + "2) use OverwriteNonDefaultsWithLatestAvroPayload for upsert, which partial update the some record by comparing precombine field ");
+
+
   public static final ConfigOption<Integer> RETRY_TIMES = ConfigOptions
       .key("write.retry.times")
       .intType()

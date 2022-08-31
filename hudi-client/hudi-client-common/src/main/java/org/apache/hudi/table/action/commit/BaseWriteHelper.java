@@ -27,6 +27,8 @@ import org.apache.hudi.table.HoodieTable;
 
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
+import org.apache.avro.Schema;
+
 import java.time.Duration;
 import java.time.Instant;
 
@@ -87,4 +89,10 @@ public abstract class BaseWriteHelper<T extends HoodieRecordPayload, I, K, O, R>
 
   public abstract I deduplicateRecords(
       I records, HoodieIndex<?, ?> index, int parallelism);
+
+  public I deduplicateRecords(
+      I records, HoodieIndex<?, ?> index, int parallelism, Schema schema) {
+    return deduplicateRecords(records, index, parallelism);
+  }
+
 }

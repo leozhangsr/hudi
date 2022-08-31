@@ -26,6 +26,7 @@ import org.apache.hudi.common.util.Option;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * subclass of OverwriteWithLatestAvroPayload used for delta streamer.
@@ -44,6 +45,58 @@ public class OverwriteNonDefaultsWithLatestAvroPayload extends OverwriteWithLate
 
   public OverwriteNonDefaultsWithLatestAvroPayload(Option<GenericRecord> record) {
     super(record); // natural order
+  }
+
+  @Override
+  public OverwriteWithLatestAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue) {
+    return preCombine(oldValue, null, null);
+  }
+
+  @Override
+  public OverwriteWithLatestAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue,
+                                                   Properties properties, Schema schema) {
+    if (oldValue.recordBytes.length == 0) {
+      // use natural order for delete record
+      return this;
+    }
+    int compare = oldValue.orderingVal.compareTo(orderingVal);
+    if (compare > 0) {
+      // pick the payload with greatest ordering value
+      return oldValue;
+    } else if (compare < 0) {
+      return this;
+    }
+    if (schema != null) {
+      try {
+        Option<IndexedRecord> newRecord = getInsertValue(schema);
+        Option<IndexedRecord> oldRecord = oldValue.getInsertValue(schema);
+        if (newRecord.isPresent() && !oldRecord.isPresent()) {
+          return this;
+        }
+        if (!newRecord.isPresent() && oldRecord.isPresent()) {
+          return oldValue;
+        }
+        if (!newRecord.isPresent() && !oldRecord.isPresent()) {
+          return this;
+        }
+        GenericRecord newIndexedRecord = (GenericRecord) newRecord.get();
+        GenericRecord oldIndexedRecord = (GenericRecord) oldRecord.get();
+        List<Schema.Field> fields = schema.getFields();
+        fields.forEach(field -> {
+          Object value = newIndexedRecord.get(field.name());
+          value = field.schema().getType().equals(Schema.Type.STRING) && value != null
+              ? value.toString() : value;
+          Object defaultValue = field.defaultVal();
+          if (!overwriteField(value, defaultValue)) {
+            oldIndexedRecord.put(field.name(), value);
+          }
+        });
+        return new OverwriteNonDefaultsWithLatestAvroPayload(oldIndexedRecord, this.orderingVal);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
+    return this;
   }
 
   @Override

@@ -36,6 +36,7 @@ import org.apache.hudi.sink.event.WriteMetadataEvent;
 import org.apache.hudi.table.action.commit.FlinkWriteHelper;
 import org.apache.hudi.util.StreamerUtil;
 
+import org.apache.avro.Schema;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -106,6 +107,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
    * Total size tracer.
    */
   private transient TotalSizeTracer tracer;
+  private Schema recordSchema;
 
   /**
    * Constructs a StreamingSinkFunction.
@@ -119,6 +121,10 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
   @Override
   public void open(Configuration parameters) throws IOException {
     this.tracer = new TotalSizeTracer(this.config);
+    if (config.getBoolean(FlinkOptions.PRE_COMBINE_WITH_SCHEMA)) {
+      this.recordSchema = new Schema.Parser().parse(this.config.getString(FlinkOptions.SOURCE_AVRO_SCHEMA));
+      LOG.info("parse record schema:{}", config.getString(FlinkOptions.SOURCE_AVRO_SCHEMA));
+    }
     initBuffer();
     initWriteFunction();
   }
@@ -420,7 +426,8 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
     List<HoodieRecord> records = bucket.writeBuffer();
     ValidationUtils.checkState(records.size() > 0, "Data bucket to flush has no buffering records");
     if (config.getBoolean(FlinkOptions.PRE_COMBINE)) {
-      records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1);
+      records = recordSchema == null ? FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1)
+          : FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, recordSchema);
     }
     bucket.preWrite(records);
     final List<WriteStatus> writeStatus = new ArrayList<>(writeFunction.apply(records, instant));
@@ -455,7 +462,8 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
             List<HoodieRecord> records = bucket.writeBuffer();
             if (records.size() > 0) {
               if (config.getBoolean(FlinkOptions.PRE_COMBINE)) {
-                records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1);
+                records = recordSchema == null ? FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1)
+                    : FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, recordSchema);
               }
               bucket.preWrite(records);
               writeStatus.addAll(writeFunction.apply(records, currentInstant));
